@@ -59,6 +59,7 @@ export function paqueteDesdePropuesta(propuesta, emitido) {
   const vence = inicio + VIGENCIA_MAXIMA_APPS_MS;
   exigir(vence > Date.parse(emitido), 'propuesta_caducada_relanzar_el_robot');
   return { contrato: 'aero.apps.evidence', version: 1, entorno: propuesta.entorno, censo: propuesta.censo,
+    ...(propuesta.catalogo ? { catalogo: propuesta.catalogo } : {}),
     emitido_en: emitido, vence_en: fechaIso(vence), apps: propuesta.apps.map((a) => ({ app_id: a.app_id, codigo_sha256: a.codigo_sha256,
       despliegue: { ...a.despliegue, comprobado_por: propuesta.verificador },
       casos: a.casos.map((c) => ({ ...c, actor: propuesta.actor, verificador: propuesta.verificador, verificado_en: emitido })) })) };
@@ -94,15 +95,30 @@ export async function comprobarLote(lote) {
   return { propuesta, recibos, identidades, verificador };
 }
 
-/** Lo que la persona ve antes de aceptar: cada caso, su resultado y sus peticiones. */
+/**
+ * Alcance de un caso de la réplica, como lo dice el resumen del robot: qué resultados exige el documento
+ * de cada paso del flujo crítico (éxito, rechazo, rechazo sin permiso), cuáles se observaron y, si escribe,
+ * cuántas comprobaciones en base hizo. `no_cuenta`: un PASS que no
+ * es un flujo de principio a fin (el certificado tampoco lo contará).
+ */
+const alcanceDe = (a) => (a ? { comprobados: a.resultados_comprobados, documentados: a.resultados_documentados,
+  pasos: a.pasos_documentados, sin_comprobar: a.sin_comprobar ?? [], sin_handler: a.peticiones_sin_handler_del_censo ?? [],
+  escribe: a.escribe, poscondiciones: a.poscondiciones,
+  no_cuenta: a.resultados_comprobados < a.resultados_documentados || (a.escribe && !a.poscondiciones) } : null);
+
+/** Lo que la persona ve antes de aceptar: cada caso, su resultado, su alcance, sus peticiones y sus comprobaciones en base. */
 export function resumenCasos(propuesta, recibos) {
   return propuesta.apps.map((a) => ({
     app_id: a.app_id,
     wsgi: (recibos[a.despliegue.receipt_id]?.wsgi ?? []).map((w) => ({ file: w.file, coincide: w.coincide, sha256: w.sha256_observado })),
+    runtime: recibos[a.despliegue.receipt_id]?.runtime ?? null,
     casos: a.casos.map((c) => ({ caso_id: c.caso_id, resultado: c.resultado,
       comprobaciones: c.comprobaciones.map((x) => `${x.tipo}=${x.resultado}`),
+      alcance: alcanceDe(recibos[c.receipt_id].alcance),
       peticiones: recibos[c.receipt_id].peticiones.map((p) => ({ method: p.method,
-        path: `${p.path}${p.query ? '?' + p.query : ''}`, status: p.observado?.status ?? p.error ?? null, location: p.observado?.location ?? null })) })),
+        path: `${p.path}${p.query ? '?' + p.query : ''}`, status: p.observado?.status ?? p.error ?? null, location: p.observado?.location ?? null })),
+      postcondiciones: (recibos[c.receipt_id].postcondiciones ?? []).map((p) => ({ metodo: p.metodo, paso: p.paso,
+        resultado: p.resultado })) })),
   }));
 }
 

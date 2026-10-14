@@ -57,19 +57,43 @@ function pintarCasos(propuesta, recibos) {
   const filas = resumenCasos(propuesta, recibos);
   const total = filas.flatMap((a) => a.casos);
   const cuenta = (r) => total.filter((c) => c.resultado === r).length;
+  const noCuentan = total.filter((c) => c.alcance?.no_cuenta).length;
   $('contenido').append(el('p', { className: 'meta', textContent: `Suite ${propuesta.suite} · robot ${propuesta.actor} · `
     + `creada ${new Date(propuesta.creado_en).toLocaleString('es-ES')}` }),
+  el('p', { className: 'meta', textContent: propuesta.entorno === 'replica'
+    ? 'Entorno: réplica aislada de internet, con datos y autoridades ficticios. No es producción.' : 'Entorno: producción.' }),
   el('p', { textContent: `${total.length} casos · PASS ${cuenta('PASS')} · FAIL ${cuenta('FAIL')} · INCONCLUSIVE ${cuenta('INCONCLUSIVE')}` }));
+  if (noCuentan) $('contenido').append(el('p', { className: 'nocuenta',
+    textContent: `${noCuentan} caso(s) NO CUENTAN COMO FLUJO DE PRINCIPIO A FIN aunque pasen: aceptarlos no los cierra.` }));
   for (const a of filas) {
     const tarjeta = el('div', { className: 'app' }, el('h2', { textContent: a.app_id }));
     for (const w of a.wsgi) tarjeta.append(el('p', { className: 'meta',
       textContent: `Código desplegado ${w.file}: ${w.coincide ? 'igual al censo' : 'DISTINTO'} (${(w.sha256 ?? '').slice(0, 12)})` }));
+    if (a.runtime) {
+      const n = (e) => a.runtime.paquetes.filter((x) => x.estado === e).map((x) => x.paquete);
+      tarjeta.append(el('p', { className: 'meta', textContent: `Python ${a.runtime.python} (producción `
+        + `${a.runtime.python_produccion.join(', ')}) · ${n('IGUAL').length} paquete(s) con la versión de producción` }));
+      if (n('DESCONOCIDA').length) tarjeta.append(el('p', { className: 'meta',
+        textContent: `Versión de producción desconocida (paquetes del sistema de PythonAnywhere): ${n('DESCONOCIDA').join(', ')}` }));
+      if (n('NO_INSTALADO').length) tarjeta.append(el('p', { className: 'nocuenta',
+        textContent: `Paquetes que la réplica no pudo instalar: ${n('NO_INSTALADO').join(', ')}` }));
+    }
     for (const c of a.casos) {
       const caso = el('div', { className: 'caso' },
         el('div', {}, el('span', { className: `res ${c.resultado}`, textContent: c.resultado }), ` ${c.caso_id}`),
         el('div', { className: 'meta', textContent: c.comprobaciones.join(' · ') }));
+      const x = c.alcance;
+      if (x) {
+        caso.append(el('div', { className: 'meta', textContent: `Resultados documentados comprobados ${x.comprobados}/${x.documentados}`
+          + ` (${x.pasos} pasos)` + (x.escribe ? ` · escribe: ${x.poscondiciones} comprobaciones en base` : '') }));
+        if (x.no_cuenta) caso.append(el('div', { className: 'nocuenta', textContent: 'NO CUENTA COMO FLUJO DE PRINCIPIO A FIN' }));
+        for (const r of x.sin_comprobar) caso.append(el('div', { className: 'pet', textContent: `sin comprobar: ${r}` }));
+        for (const r of x.sin_handler) caso.append(el('div', { className: 'pet', textContent: `petición sin handler del censo: ${r}` }));
+      }
       for (const p of c.peticiones) caso.append(el('div', { className: 'pet',
         textContent: `${p.method} ${p.path} → ${p.status}${p.location ? ' ' + p.location : ''}` }));
+      for (const p of c.postcondiciones) caso.append(el('div', { className: 'pet',
+        textContent: `${p.metodo} ${p.paso} → ${p.resultado}` }));
       tarjeta.append(caso);
     }
     $('contenido').append(tarjeta);
