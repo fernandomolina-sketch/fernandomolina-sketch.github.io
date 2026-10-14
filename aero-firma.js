@@ -150,6 +150,41 @@ export async function aceptar({ propuesta, ahora = new Date(), obtenerAsercion }
       client_data_json: b64url(a.clientDataJSON), firma: b64url(a.signature) }, firmas };
 }
 
+// ── aceptación del riesgo residual (Fase IV) ──────────────────────────────
+// Contrato idéntico a control-plane/src/aero-os/fase4-riesgo-residual.js. El informe viaja entero en el
+// documento firmado: se firma exactamente lo que se leyó. Vale solo para el catálogo que nombra.
+
+export const CONTRATO_RIESGO_RESIDUAL = 'aero.fase4.riesgo_residual.aceptacion';
+
+export async function retoRiesgoResidual({ principal, catalogo_sha256, informe_sha256, emitido_en }) {
+  return sha256(JSON.stringify(canonico({ tipo: 'aero.fase4.riesgo_residual.v1', principal, catalogo_sha256,
+    informe_sha256, emitido_en })));
+}
+
+/** El lote trae el informe íntegro de ese catálogo y la llave de acceso del propietario. */
+export async function comprobarLoteRiesgo(lote) {
+  exigir(lote?.v === 1 && typeof lote.principal === 'string' && /^[0-9a-f]{64}$/.test(lote.catalogo_sha256 ?? '')
+    && objeto(lote.informe) && typeof lote.informe.texto === 'string' && typeof lote.identidades === 'string', 'enlace_invalido');
+  exigir(hex(await sha256(lote.informe.texto)) === lote.informe.sha256
+    && lote.informe.texto.includes(`sha256 ${lote.catalogo_sha256}`), 'informe_alterado');
+  const ids = JSON.parse(lote.identidades);
+  const firmante = Array.isArray(ids) ? ids.find((i) => i?.principal === lote.principal && objeto(i.webauthn)) : null;
+  exigir(firmante, 'propietario_sin_llave_de_acceso');
+  return { firmante };
+}
+
+/** Firma la aceptación con una aserción de la llave de acceso sobre el reto del riesgo residual. */
+export async function aceptarRiesgoResidual({ lote, ahora = new Date(), obtenerAsercion }) {
+  const emitido = fechaIso(ahora);
+  const informe = { texto: lote.informe.texto, sha256: hex(await sha256(lote.informe.texto)) };
+  const reto = await retoRiesgoResidual({ principal: lote.principal, catalogo_sha256: lote.catalogo_sha256,
+    informe_sha256: informe.sha256, emitido_en: emitido });
+  const a = await obtenerAsercion(reto);
+  return { contrato: CONTRATO_RIESGO_RESIDUAL, version: 1, catalogo_sha256: lote.catalogo_sha256, informe, emitido_en: emitido,
+    firma: { principal: lote.principal, authenticator_data: b64url(a.authenticatorData),
+      client_data_json: b64url(a.clientDataJSON), firma: b64url(a.signature) } };
+}
+
 // ── alta de la llave de acceso ────────────────────────────────────────────
 
 // Prefijo SPKI de una clave pública P-256 sin comprimir (RFC 5480).

@@ -26,6 +26,8 @@ h2 { font-size: 17px; margin: 0 0 8px; word-break: break-all; }
 .pet { font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--suave); word-break: break-all; }
 .meta { color: var(--suave); font-size: 14px; }
 .nocuenta { color: var(--mal); font-weight: 600; font-size: 14px; }
+.informe { font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin: 0 0 12px; }
 .huella { font: 13px/1.4 ui-monospace, Menlo, monospace; word-break: break-all; background: var(--tarjeta);
   border: 1px solid var(--borde); border-radius: 8px; padding: 10px; }
 button, a.boton { display: block; width: 100%; margin: 10px 0; padding: 14px; border-radius: 12px; border: 0;

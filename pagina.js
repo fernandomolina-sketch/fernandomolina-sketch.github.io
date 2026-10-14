@@ -1,7 +1,7 @@
 // Aero C-Suite · página de firma. Sin red: lee el enlace, pide Face ID y prepara
 // el commit en GitHub, que la persona confirma allí.
-import { aceptar, comprobarLote, enlaceCommit, identidadesConLlave, leerLote, resumenCasos, spkiDeCredencial }
-  from './aero-firma.js';
+import { aceptar, aceptarRiesgoResidual, comprobarLote, comprobarLoteRiesgo, enlaceCommit, identidadesConLlave, leerLote,
+  resumenCasos, spkiDeCredencial } from './aero-firma.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...hijos) => {
@@ -15,6 +15,8 @@ const MOTIVOS = {
   firma_del_robot_invalida: 'La propuesta no lleva una firma válida del robot. No firme.',
   verificador_sin_llave_de_acceso: 'Su llave de acceso aún no está dada de alta.',
   propuesta_caducada_relanzar_el_robot: 'La propuesta ha caducado (más de 72 horas). Hay que relanzar el robot.',
+  informe_alterado: 'El informe no coincide con su huella o con el catálogo. No firme.',
+  propietario_sin_llave_de_acceso: 'Su llave de acceso aún no está dada de alta.',
   NotAllowedError: 'Face ID cancelado o no disponible. No se ha firmado nada.',
 };
 const explicar = (e) => MOTIVOS[e?.name] ?? MOTIVOS[e?.message] ?? `No se ha podido completar: ${e?.message ?? e}`;
@@ -126,11 +128,39 @@ async function firmarSuite(lote) {
   };
 }
 
+async function firmarRiesgo(lote) {
+  $('titulo').textContent = 'Aceptación del riesgo residual';
+  const { firmante } = await comprobarLoteRiesgo(lote);
+  if (location.origin !== firmante.webauthn.origen) throw Error(`Esta página no es el origen de su llave (${firmante.webauthn.origen}).`);
+  $('contenido').append(
+    el('p', { className: 'meta', textContent: `Catálogo ${lote.catalogo_sha256.slice(0, 12)} · informe ${lote.informe.sha256.slice(0, 12)}` }),
+    el('pre', { className: 'informe', textContent: lote.informe.texto }));
+  estado('Informe íntegro. Léalo entero: es exactamente lo que firma.', 'ok');
+  const boton = el('button', { textContent: 'Acepto el riesgo residual y firmo con Face ID' });
+  $('acciones').append(boton);
+  boton.onclick = async () => {
+    boton.disabled = true;
+    try {
+      const aceptacion = await aceptarRiesgoResidual({ lote, obtenerAsercion: async (reto) => {
+        const a = await navigator.credentials.get({ publicKey: { challenge: reto, rpId: firmante.webauthn.rp_id,
+          userVerification: 'required', timeout: 120000 } });
+        return a.response;
+      } });
+      $('acciones').replaceChildren(
+        el('p', { textContent: 'Firmado. Último paso: guárdelo en GitHub (pulse «Commit changes»). El integrador lo lleva a producción.' }),
+        el('a', { className: 'boton', textContent: 'Guardar en GitHub', target: '_blank', rel: 'noopener',
+          href: enlaceCommit({ repo: lote.repo, rama: 'fase4/riesgo-residual',
+            ruta: 'control-plane/config/fase4/riesgo-residual/aceptado.json', contenido: JSON.stringify(aceptacion, null, 2) + '\n' }) }));
+      estado('Aceptación del riesgo residual firmada en este dispositivo.', 'ok');
+    } catch (e) { estado(explicar(e), 'mal'); boton.disabled = false; }
+  };
+}
+
 async function inicio() {
-  const m = /^#(alta|aceptar)=([A-Za-z0-9_-]+)$/.exec(location.hash);
+  const m = /^#(alta|aceptar|riesgo)=([A-Za-z0-9_-]+)$/.exec(location.hash);
   if (!m) { estado('Abra esta página desde el enlace que le envía Aero C-Suite.'); return; }
   if (!window.PublicKeyCredential) { estado('Este navegador no admite llaves de acceso. Use Safari en el iPhone.', 'mal'); return; }
   const lote = await leerLote(m[2]);
-  if (m[1] === 'alta') await alta(lote); else await firmarSuite(lote);
+  if (m[1] === 'alta') await alta(lote); else if (m[1] === 'riesgo') await firmarRiesgo(lote); else await firmarSuite(lote);
 }
 inicio().catch((e) => estado(explicar(e), 'mal'));
