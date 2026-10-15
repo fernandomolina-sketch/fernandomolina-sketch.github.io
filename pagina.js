@@ -1,7 +1,7 @@
 // Aero C-Suite · página de firma. Sin red: lee el enlace, pide Face ID y prepara
 // el commit en GitHub, que la persona confirma allí.
-import { accionDeEnlace, aceptar, aceptarRiesgoResidual, comprobarLote, comprobarLoteRiesgo, enlaceCommit, identidadesConLlave,
-  leerLote, resumenCasos, spkiDeCredencial } from './aero-firma.js';
+import { accionDeEnlace, aceptar, aceptarRiesgoResidual, comprobarLote, comprobarLoteRiesgo, enlaceCommit, guardadoEnGitHub,
+  identidadesConLlave, leerLote, resumenCasos, spkiDeCredencial } from './aero-firma.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...hijos) => {
@@ -19,6 +19,30 @@ const MOTIVOS = {
   propietario_sin_llave_de_acceso: 'Su llave de acceso aún no está dada de alta.',
   NotAllowedError: 'Face ID cancelado o no disponible. No se ha firmado nada.',
 };
+// Último paso: el fichero firmado va a GitHub. Si no cabe en el enlace, se copia y se pega allí (o en el chat
+// de Claude, que lo guarda: la firma no se puede alterar sin que deje de valer).
+function guardar({ repo, rama, ruta, contenido, quien, soloChat = false }) {
+  const area = el('textarea', { id: 'firmado', rows: 4, readOnly: true, spellcheck: false, value: contenido });
+  const copiar = el('button', { textContent: 'Copiar la firma' });
+  copiar.onclick = () => navigator.clipboard.writeText(contenido).then(() => estado('Firma copiada.', 'ok'),
+    () => { area.focus(); area.setSelectionRange(0, contenido.length); estado('La firma está seleccionada: pulse «Copiar».'); });
+  // Sin rama propia en GitHub (riesgo residual): la firma se pega en el chat y el integrador la lleva a producción.
+  if (soloChat) {
+    return [el('p', { textContent: 'Firmado. Último paso: pulse «Copiar la firma» y péguela en el chat de Claude. '
+      + `${quien}` }), copiar, area];
+  }
+  const g = guardadoEnGitHub({ repo, rama, ruta, contenido });
+  if (!g.pegar) copiar.className = 'secundario';
+  const abrir = el('a', { className: 'boton', textContent: 'Guardar en GitHub', target: '_blank', rel: 'noopener', href: g.enlace });
+  if (!g.pegar) {
+    return [el('p', { textContent: `Firmado. Último paso: pulse «Guardar en GitHub» y después «Commit changes». ${quien}` }),
+      abrir, copiar, area];
+  }
+  return [el('p', { textContent: 'Firmado. Esta firma es demasiado larga para ir dentro de un enlace. Último paso: 1 · pulse '
+    + '«Copiar la firma»; 2 · pulse «Guardar en GitHub», pegue en el editor y pulse «Commit changes». '
+    + `También puede pegarla en el chat de Claude y el integrador la guarda. ${quien}` }), copiar, abrir, area];
+}
+
 const explicar = (e) => MOTIVOS[e?.name] ?? MOTIVOS[e?.message] ?? `No se ha podido completar: ${e?.message ?? e}`;
 const aleatorio = (n) => crypto.getRandomValues(new Uint8Array(n));
 
@@ -118,11 +142,9 @@ async function firmarSuite(lote) {
           userVerification: 'required', timeout: 120000 } });
         return a.response;
       } });
-      $('acciones').replaceChildren(
-        el('p', { textContent: 'Firmado. Último paso: guárdelo en GitHub (pulse «Commit changes»). El robot lo refrenda solo.' }),
-        el('a', { className: 'boton', textContent: 'Guardar en GitHub', target: '_blank', rel: 'noopener',
-          href: enlaceCommit({ repo: lote.repo, rama: `qa/${propuesta.suite}`,
-            ruta: `docs/evidencia/qa-apps/${propuesta.suite}/aceptado.json`, contenido: JSON.stringify(aceptacion, null, 2) + '\n' }) }));
+      $('acciones').replaceChildren(...guardar({ repo: lote.repo, rama: `qa/${propuesta.suite}`,
+        ruta: `docs/evidencia/qa-apps/${propuesta.suite}/aceptado.json`, contenido: JSON.stringify(aceptacion, null, 2) + '\n',
+        quien: 'El robot lo refrenda solo.' }));
       estado('Aceptación firmada en este dispositivo.', 'ok');
     } catch (e) { estado(explicar(e), 'mal'); boton.disabled = false; }
   };
@@ -146,11 +168,8 @@ async function firmarRiesgo(lote) {
           userVerification: 'required', timeout: 120000 } });
         return a.response;
       } });
-      $('acciones').replaceChildren(
-        el('p', { textContent: 'Firmado. Último paso: guárdelo en GitHub (pulse «Commit changes»). El integrador lo lleva a producción.' }),
-        el('a', { className: 'boton', textContent: 'Guardar en GitHub', target: '_blank', rel: 'noopener',
-          href: enlaceCommit({ repo: lote.repo, rama: 'fase4/riesgo-residual',
-            ruta: 'control-plane/config/fase4/riesgo-residual/aceptado.json', contenido: JSON.stringify(aceptacion, null, 2) + '\n' }) }));
+      $('acciones').replaceChildren(...guardar({ contenido: JSON.stringify(aceptacion, null, 2) + '\n', soloChat: true,
+        quien: 'El integrador la guarda y la lleva a producción; la firma no se puede alterar sin que deje de valer.' }));
       estado('Aceptación del riesgo residual firmada en este dispositivo.', 'ok');
     } catch (e) { estado(explicar(e), 'mal'); boton.disabled = false; }
   };

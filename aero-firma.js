@@ -267,3 +267,17 @@ export function enlaceCommit({ repo, rama, ruta, contenido }) {
   return `https://github.com/${repo}/new/${encodeURIComponent(rama).replace(/%2F/g, '/')}?filename=${encodeURIComponent(ruta)}`
     + `&value=${encodeURIComponent(contenido)}`;
 }
+
+/** GitHub responde 414 («URL demasiado larga») por encima de unos 8.000 caracteres; se deja margen. */
+export const MAX_ENLACE_GITHUB = 7000;
+
+/**
+ * Cómo guardar el fichero firmado en GitHub. Si cabe, el enlace lleva el contenido (un toque). Si no
+ * (p. ej. una suite de 42 firmas: 8.490 caracteres), el enlace abre el fichero vacío y la persona pega
+ * el contenido que ha copiado de la página.
+ */
+export function guardadoEnGitHub({ repo, rama, ruta, contenido }) {
+  const completo = enlaceCommit({ repo, rama, ruta, contenido });
+  if (completo.length <= MAX_ENLACE_GITHUB) return { enlace: completo, pegar: false };
+  return { enlace: enlaceCommit({ repo, rama, ruta, contenido: '' }).replace(/&value=$/, ''), pegar: true };
+}
