@@ -1,7 +1,7 @@
 // Aero C-Suite · página de firma. Sin red: lee el enlace, pide Face ID y prepara
 // el commit en GitHub, que la persona confirma allí.
-import { aceptar, aceptarRiesgoResidual, comprobarLote, comprobarLoteRiesgo, enlaceCommit, identidadesConLlave, leerLote,
-  resumenCasos, spkiDeCredencial } from './aero-firma.js';
+import { accionDeEnlace, aceptar, aceptarRiesgoResidual, comprobarLote, comprobarLoteRiesgo, enlaceCommit, identidadesConLlave,
+  leerLote, resumenCasos, spkiDeCredencial } from './aero-firma.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...hijos) => {
@@ -156,11 +156,32 @@ async function firmarRiesgo(lote) {
   };
 }
 
-async function inicio() {
-  const m = /^#(alta|aceptar|riesgo)=([A-Za-z0-9_-]+)$/.exec(location.hash);
-  if (!m) { estado('Abra esta página desde el enlace que le envía Aero C-Suite.'); return; }
+async function abrir({ accion, datos }) {
   if (!window.PublicKeyCredential) { estado('Este navegador no admite llaves de acceso. Use Safari en el iPhone.', 'mal'); return; }
-  const lote = await leerLote(m[2]);
-  if (m[1] === 'alta') await alta(lote); else if (m[1] === 'riesgo') await firmarRiesgo(lote); else await firmarSuite(lote);
+  const lote = await leerLote(datos);
+  if (accion === 'alta') await alta(lote); else if (accion === 'riesgo') await firmarRiesgo(lote); else await firmarSuite(lote);
+}
+
+// Sin enlace en la dirección (o roto al abrirlo desde otra app): la persona pega aquí el enlace
+// completo. Así no hay límite de longitud y nada pasa por ningún servidor.
+function pedirEnlace() {
+  estado('Pegue aquí el enlace de firma que le envía Aero C-Suite.');
+  const area = el('textarea', { id: 'enlace', rows: 4, spellcheck: false, autocomplete: 'off',
+    placeholder: 'https://fernandomolina-sketch.github.io/#…' });
+  area.setAttribute('autocapitalize', 'off');
+  const boton = el('button', { textContent: 'Abrir el enlace pegado' });
+  $('acciones').append(el('label', { htmlFor: 'enlace', className: 'meta', textContent: 'Enlace de firma' }), area, boton);
+  boton.onclick = () => {
+    const x = accionDeEnlace(area.value);
+    if (!x) { estado(MOTIVOS.enlace_invalido, 'mal'); return; }
+    $('acciones').replaceChildren();
+    abrir(x).catch((e) => estado(explicar(e), 'mal'));
+  };
+}
+
+async function inicio() {
+  // La ruta cubre el enlace cuyo `#` llegó como `%23`: GitHub Pages sirve entonces 404.html, que carga esta página.
+  const x = accionDeEnlace(location.hash) ?? accionDeEnlace(location.pathname);
+  if (x) await abrir(x); else pedirEnlace();
 }
 inicio().catch((e) => estado(explicar(e), 'mal'));

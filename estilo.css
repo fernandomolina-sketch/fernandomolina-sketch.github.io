@@ -32,6 +32,8 @@ h2 { font-size: 17px; margin: 0 0 8px; word-break: break-all; }
   border: 1px solid var(--borde); border-radius: 8px; padding: 10px; }
 button, a.boton { display: block; width: 100%; margin: 10px 0; padding: 14px; border-radius: 12px; border: 0;
   background: var(--accion); color: var(--accion-texto); font-size: 17px; font-weight: 600; text-align: center; text-decoration: none; }
+textarea { display: block; width: 100%; margin: 6px 0; padding: 10px; border-radius: 10px; border: 1px solid var(--borde);
+  background: var(--tarjeta); color: var(--texto); font: 12px/1.4 ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
 button.secundario { background: transparent; color: var(--accion); border: 1px solid var(--accion); }
 button:disabled { opacity: .5; }
 footer { margin-top: 28px; color: var(--suave); font-size: 13px; }

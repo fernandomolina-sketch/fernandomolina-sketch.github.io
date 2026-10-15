@@ -244,6 +244,18 @@ export async function identidadesConLlave({ identidadesTexto, principal, rpId, s
 
 // ── enlaces ───────────────────────────────────────────────────────────────
 
+/**
+ * Acción y datos de un enlace de firma, venga como venga: el fragmento `#accion=…` de la página,
+ * el enlace entero pegado (aunque traiga espacios o saltos de línea) o la ruta `/%23accion=…` que
+ * llega cuando una app cambia el `#` por `%23` al abrir el enlace. Sin acción conocida, null.
+ */
+export function accionDeEnlace(texto) {
+  let t = String(texto ?? '').replace(/\s+/g, '');
+  try { t = decodeURIComponent(t); } catch { /* un % suelto: se lee tal cual */ }
+  const m = /(?:^|[#/])(alta|aceptar|riesgo)=([A-Za-z0-9_-]+)/.exec(t);
+  return m ? { accion: m[1], datos: m[2] } : null;
+}
+
 export async function leerLote(fragmento) {
   const bytes = deB64url(fragmento);
   const flujo = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
